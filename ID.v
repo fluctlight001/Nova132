@@ -332,10 +332,12 @@ module ID(
 
     assign br_e = inst_beq & rs_eq_rt
                 | inst_bne & ~rs_eq_rt
+                | inst_j
                 | inst_jr
                 | inst_jal;
     assign br_addr = inst_beq   ? (pc_plus_4 + {{14{inst[15]}},inst[15:0],2'b0}) 
                    : inst_bne   ? (pc_plus_4 + {{14{inst[15]}},inst[15:0],2'b0})
+                   : inst_j     ? {id_pc[31:28],instr_index,2'b0}
                    : inst_jr    ? rdata1 
                    : inst_jal   ? {id_pc[31:28],instr_index,2'b0} : 32'b0;
 
