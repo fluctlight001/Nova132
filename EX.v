@@ -9,6 +9,8 @@ module EX(
 
     output wire [`EX_TO_MEM_WD-1:0] ex_to_mem_bus,
 
+    output wire [`EX_TO_RF_WD-1:0] ex_to_rf_bus,
+
     output wire data_sram_en,
     output wire [3:0] data_sram_wen,
     output wire [31:0] data_sram_addr,
@@ -92,6 +94,17 @@ module EX(
         rf_waddr,       // 36:32
         ex_result       // 31:0
     };
+
+    assign ex_to_rf_bus = {
+        ex_pc,
+        rf_we,
+        rf_waddr,
+        ex_result
+    };
     
+    assign data_sram_en     = data_ram_en;
+    assign data_sram_wen    = data_ram_wen;
+    assign data_sram_addr   = ex_result;
+    assign data_sram_wdata  = rf_rdata2;
     
 endmodule
