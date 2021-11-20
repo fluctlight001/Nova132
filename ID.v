@@ -230,7 +230,7 @@ module ID(
 
 
     // rs to reg1
-    assign sel_alu_src1[0] = inst_addiu | inst_addu | inst_subu | inst_ori | inst_or | inst_sw | inst_lw | inst_xor;
+    assign sel_alu_src1[0] = inst_addiu | inst_addu | inst_subu | inst_ori | inst_or | inst_sw | inst_lw | inst_xor | inst_sltu;
 
     // pc to reg1
     assign sel_alu_src1[1] = inst_jal;
@@ -240,7 +240,7 @@ module ID(
 
     
     // rt to reg2
-    assign sel_alu_src2[0] = inst_addu | inst_subu | inst_sll | inst_or | inst_xor;
+    assign sel_alu_src2[0] = inst_addu | inst_subu | inst_sll | inst_or | inst_xor | inst_sltu;
     
     // imm_sign_extend to reg2
     assign sel_alu_src2[1] = inst_lui | inst_addiu | inst_sw | inst_lw;
@@ -256,7 +256,7 @@ module ID(
     assign op_add = inst_addiu | inst_addu | inst_jal | inst_sw | inst_lw;
     assign op_sub = inst_subu;
     assign op_slt = 1'b0;
-    assign op_sltu = 1'b0;
+    assign op_sltu = inst_sltu;
     assign op_and = 1'b0;
     assign op_nor = 1'b0;
     assign op_or = inst_ori | inst_or;
@@ -286,12 +286,12 @@ module ID(
 
 
     // regfile store enable
-    assign rf_we = inst_ori | inst_lui | inst_addiu | inst_subu | inst_jal | inst_addu | inst_sll | inst_or | inst_lw | inst_xor;
+    assign rf_we = inst_ori | inst_lui | inst_addiu | inst_subu | inst_jal | inst_addu | inst_sll | inst_or | inst_lw | inst_xor | inst_sltu;
 
 
 
     // store in [rd]
-    assign sel_rf_dst[0] = inst_addu | inst_subu | inst_sll | inst_or | inst_xor;
+    assign sel_rf_dst[0] = inst_addu | inst_subu | inst_sll | inst_or | inst_xor | inst_sltu;
     // store in [rt] 
     assign sel_rf_dst[1] = inst_ori | inst_lui | inst_addiu | inst_lw;
     // store in [31]
@@ -331,9 +331,11 @@ module ID(
     assign rs_eq_rt = (rdata1 == rdata2);
 
     assign br_e = inst_beq & rs_eq_rt
+                | inst_bne & ~rs_eq_rt
                 | inst_jr
                 | inst_jal;
     assign br_addr = inst_beq   ? (pc_plus_4 + {{14{inst[15]}},inst[15:0],2'b0}) 
+                   : inst_bne   ? (pc_plus_4 + {{14{inst[15]}},inst[15:0],2'b0})
                    : inst_jr    ? rdata1 
                    : inst_jal   ? {id_pc[31:28],instr_index,2'b0} : 32'b0;
 
