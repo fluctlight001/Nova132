@@ -230,7 +230,7 @@ module ID(
 
 
     // rs to reg1
-    assign sel_alu_src1[0] = inst_addiu | inst_addu | inst_subu | inst_ori | inst_or | inst_sw | inst_lw | inst_xor | inst_sltu;
+    assign sel_alu_src1[0] = inst_addiu | inst_addu | inst_subu | inst_ori | inst_or | inst_sw | inst_lw | inst_xor | inst_sltu | inst_slt;
 
     // pc to reg1
     assign sel_alu_src1[1] = inst_jal;
@@ -240,7 +240,7 @@ module ID(
 
     
     // rt to reg2
-    assign sel_alu_src2[0] = inst_addu | inst_subu | inst_sll | inst_or | inst_xor | inst_sltu;
+    assign sel_alu_src2[0] = inst_addu | inst_subu | inst_sll | inst_or | inst_xor | inst_sltu | inst_slt;
     
     // imm_sign_extend to reg2
     assign sel_alu_src2[1] = inst_lui | inst_addiu | inst_sw | inst_lw;
@@ -255,7 +255,7 @@ module ID(
 
     assign op_add = inst_addiu | inst_addu | inst_jal | inst_sw | inst_lw;
     assign op_sub = inst_subu;
-    assign op_slt = 1'b0;
+    assign op_slt = inst_slt;
     assign op_sltu = inst_sltu;
     assign op_and = 1'b0;
     assign op_nor = 1'b0;
@@ -286,12 +286,12 @@ module ID(
 
 
     // regfile store enable
-    assign rf_we = inst_ori | inst_lui | inst_addiu | inst_subu | inst_jal | inst_addu | inst_sll | inst_or | inst_lw | inst_xor | inst_sltu;
+    assign rf_we = inst_ori | inst_lui | inst_addiu | inst_subu | inst_jal | inst_addu | inst_sll | inst_or | inst_lw | inst_xor | inst_sltu | inst_slt;
 
 
 
     // store in [rd]
-    assign sel_rf_dst[0] = inst_addu | inst_subu | inst_sll | inst_or | inst_xor | inst_sltu;
+    assign sel_rf_dst[0] = inst_addu | inst_subu | inst_sll | inst_or | inst_xor | inst_sltu | inst_slt;
     // store in [rt] 
     assign sel_rf_dst[1] = inst_ori | inst_lui | inst_addiu | inst_lw;
     // store in [31]
