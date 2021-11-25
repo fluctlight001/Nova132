@@ -115,18 +115,20 @@ module EX(
     assign multu_result = md_src1 * md_src2;
     assign mult_result = sign_flag ? {sign_flag,~multu_result[62:0]}+1'b1 : {sign_flag,multu_result[62:0]};
 
-    assign hi_we = inst_div | inst_divu | inst_mult | inst_multu;
-    assign lo_we = inst_div | inst_divu | inst_mult | inst_multu;
+    assign hi_we = inst_div | inst_divu | inst_mult | inst_multu | inst_mthi;
+    assign lo_we = inst_div | inst_divu | inst_mult | inst_multu | inst_mtlo;
 
     assign hi_o = inst_div ? (rf_rdata1[31] ? {rf_rdata1[31],~mod_result[30:0]}+1'b1 : {rf_rdata1[31],mod_result[30:0]}) :
                   inst_divu ? mod_result :
                   inst_mult ? mult_result[63:32] :
                   inst_multu ? multu_result[63:32] :
+                  inst_mthi ? rf_rdata1 :
                   32'b0;
     assign lo_o = inst_div ? (sign_flag ? {sign_flag,~div_result[30:0]}+1'b1 : {sign_flag,div_result[30:0]}):
                   inst_divu ? div_result :
                   inst_mult ? mult_result[31:0] :
                   inst_multu ? multu_result[31:0] :
+                  inst_mtlo ? rf_rdata1 :
                   32'b0;
 
     assign hilo_bus = {

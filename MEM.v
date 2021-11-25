@@ -59,7 +59,7 @@ module MEM(
     assign rf_wdata = sel_rf_res ? mem_result : ex_result;
 
     assign mem_to_wb_bus = {
-        hilo_bus,   // 133:70
+        hilo_bus,   // 135:70
         mem_pc,     // 69:38
         rf_we,      // 37
         rf_waddr,   // 36:32
