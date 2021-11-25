@@ -36,8 +36,10 @@ module WB(
     wire rf_we;
     wire [4:0] rf_waddr;
     wire [31:0] rf_wdata;
+    wire [`HILO_WD-1:0] hilo_bus;
 
     assign {
+        hilo_bus,
         wb_pc,
         rf_we,
         rf_waddr,
@@ -46,6 +48,7 @@ module WB(
 
     // assign wb_to_rf_bus = mem_to_wb_bus_r[`WB_TO_RF_WD-1:0];
     assign wb_to_rf_bus = {
+        hilo_bus,
         rf_we,
         rf_waddr,
         rf_wdata
