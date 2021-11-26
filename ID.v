@@ -5,7 +5,8 @@ module ID(
     // input wire flush,
     input wire [`StallBus-1:0] stall,
     
-    output wire stallreq,
+    output wire stallreq_for_load,
+    output wire stallreq_for_bru,
 
     input wire [`IF_TO_ID_WD-1:0] if_to_id_bus,
 
@@ -37,22 +38,33 @@ module ID(
     wire [31:0] hi_o, lo_o;
     wire [31:0] hi, lo;
 
+    reg flag;
+    reg [31:0] buf_inst;
+
     always @ (posedge clk) begin
         if (rst) begin
-            if_to_id_bus_r <= `IF_TO_ID_WD'b0;        
+            if_to_id_bus_r <= `IF_TO_ID_WD'b0;   
+            flag <= 1'b0;
+            buf_inst <= 32'b0;
         end
         // else if (flush) begin
         //     ic_to_id_bus <= `IC_TO_ID_WD'b0;
         // end
         else if (stall[1]==`Stop && stall[2]==`NoStop) begin
             if_to_id_bus_r <= `IF_TO_ID_WD'b0;
+            flag <= 1'b0;
         end
         else if (stall[1]==`NoStop) begin
             if_to_id_bus_r <= if_to_id_bus;
+            flag <= 1'b0;
+        end
+        else if (stall[1]==`Stop && stall[2]==`Stop && ~flag) begin
+            flag <= 1'b1;
+            buf_inst <= inst_sram_rdata;
         end
     end
     
-    assign inst = ce ? inst_sram_rdata : 32'b0;
+    assign inst = ce ? flag ? buf_inst : inst_sram_rdata : 32'b0;
     assign {
         ce,
         id_pc
@@ -113,6 +125,7 @@ module ID(
     wire [2:0] sel_rf_dst;
 
     wire [31:0] rf_rdata1, rf_rdata2, rdata1, rdata2;
+    wire [31:0] bru_rdata1, bru_rdata2;
 
     regfile u_regfile(
     	.clk    (clk    ),
@@ -342,7 +355,7 @@ module ID(
     // 0 from alu_res ; 1 from ld_res
     assign sel_rf_res = inst_lw | inst_lh | inst_lhu | inst_lb | inst_lbu; 
 
-    assign stallreq = inst_lw | inst_lh | inst_lhu | inst_lb | inst_lbu;
+    assign stallreq_for_load = inst_lw | inst_lh | inst_lhu | inst_lb | inst_lbu;
 
 
 
@@ -398,6 +411,23 @@ module ID(
     wire rs_lt_z;
     wire [31:0] pc_plus_4;
     assign pc_plus_4 = id_pc + 32'h4;
+
+    // assign bru_rdata1 = (wb_rf_we & (wb_rf_waddr == rs))    ? wb_rf_wdata :
+    //                                                           rf_rdata1;
+    // assign bru_rdata2 = (wb_rf_we & (wb_rf_waddr == rt))    ? wb_rf_wdata :
+    //                                                           rf_rdata2;
+    // assign stallreq_for_bru = ex_rf_we & (ex_rf_waddr==rt | ex_rf_waddr==rs) 
+    //                         & mem_rf_we & (mem_rf_waddr==rt | mem_rf_waddr==rs) 
+    //                         & (inst_beq | inst_bne | inst_bgez | inst_bgtz 
+    //                         | inst_blez | inst_bltz | inst_bltzal | inst_bgezal
+    //                         | inst_j | inst_jr | inst_jal | inst_jalr);
+    assign stallreq_for_bru = 1'b0;
+
+    // assign rs_eq_rt = (bru_rdata1 == bru_rdata2);
+    // assign rs_ge_z  = ~bru_rdata1[31];
+    // assign rs_gt_z  = ($signed(bru_rdata1) > 0);
+    // assign rs_le_z  = (bru_rdata1[31] == 1'b1 || bru_rdata1 == 32'b0);
+    // assign rs_lt_z  = (bru_rdata1[31]);
 
     assign rs_eq_rt = (rdata1 == rdata2);
     assign rs_ge_z  = ~rdata1[31];

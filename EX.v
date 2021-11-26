@@ -4,6 +4,7 @@ module EX(
     input wire rst,
     // input wire flush,
     input wire [`StallBus-1:0] stall,
+    output wire stallreq_for_ex,
 
     input wire [`ID_TO_EX_WD-1:0] id_to_ex_bus,
 
@@ -91,59 +92,6 @@ module EX(
         .alu_result  (alu_result  )
     );
 
-// mul & div
-    wire inst_mfhi, inst_mflo, inst_mthi, inst_mtlo,
-         inst_mult, inst_multu, inst_div, inst_divu;
-    
-    wire hi_we, lo_we;
-    wire [31:0] hi_o, lo_o;
-    wire [`HILO_WD-1:0] hilo_bus;
-
-    wire sign_flag;
-    wire [31:0] div_result, mod_result;
-    wire [63:0] mult_result, multu_result;
-
-    wire [31:0] md_src1, md_src2;
-
-    assign {
-        inst_mfhi, inst_mflo, inst_mthi, inst_mtlo,
-        inst_mult, inst_multu, inst_div, inst_divu
-    } = hilo_op;
-
-    assign sign_flag = rf_rdata1[31]^rf_rdata2[31];
-    assign md_src1 = inst_div | inst_mult ? (rf_rdata1[31] ? {1'b0,~rf_rdata1[30:0]}+1'b1 : rf_rdata1)
-                   : inst_divu | inst_multu ? rf_rdata1
-                   : 32'b1;
-    assign md_src2 = inst_div | inst_mult ? (rf_rdata2[31] ? {1'b0,~rf_rdata2[30:0]}+1'b1 : rf_rdata2)
-                   : inst_divu | inst_multu ? rf_rdata2
-                   : 32'b1;
-
-    assign div_result = md_src1 / md_src2;
-    assign mod_result = md_src1 % md_src2;
-    assign multu_result = md_src1 * md_src2;
-    assign mult_result = sign_flag ? {sign_flag,~multu_result[62:0]}+1'b1 : {sign_flag,multu_result[62:0]};
-
-    assign hi_we = inst_div | inst_divu | inst_mult | inst_multu | inst_mthi;
-    assign lo_we = inst_div | inst_divu | inst_mult | inst_multu | inst_mtlo;
-
-    assign hi_o = inst_mthi ? rf_rdata1 :
-                  inst_div ? (rf_rdata1[31] ? {rf_rdata1[31],~mod_result[30:0]}+1'b1 : {rf_rdata1[31],mod_result[30:0]}) :
-                  inst_divu ? mod_result :
-                  inst_mult ? mult_result[63:32] :
-                  inst_multu ? multu_result[63:32] :
-                  32'b0;
-    assign lo_o = inst_mtlo ? rf_rdata1 :
-                  inst_div ? (sign_flag ? {sign_flag,~div_result[30:0]}+1'b1 : {sign_flag,div_result[30:0]}):
-                  inst_divu ? div_result :
-                  inst_mult ? mult_result[31:0] :
-                  inst_multu ? multu_result[31:0] :
-                  32'b0;
-
-    assign hilo_bus = {
-        hi_we, hi_o,
-        lo_we, lo_o
-    };
-
 // load & store  
     wire inst_lb,   inst_lbu,   inst_lh,    inst_lhu,   inst_lw;
     wire inst_sb,   inst_sh,    inst_sw;
@@ -170,6 +118,140 @@ module EX(
     assign data_sram_wdata  = inst_sb ? {4{rf_rdata2[7:0]}} :
                               inst_sh ? {2{rf_rdata2[15:0]}} :
                             /*inst_sw*/ rf_rdata2;
+
+// mul & div
+    wire inst_mfhi, inst_mflo,  inst_mthi,  inst_mtlo;
+    wire inst_mult, inst_multu, inst_div,   inst_divu;
+
+    wire hi_we, lo_we;
+    wire [31:0] hi_o, lo_o;
+    wire [`HILO_WD-1:0] hilo_bus;
+    wire op_mul, op_div;
+    wire [63:0] mul_result, div_result;
+
+    assign {
+        inst_mfhi, inst_mflo, inst_mthi, inst_mtlo,
+        inst_mult, inst_multu, inst_div, inst_divu
+    } = hilo_op;
+
+    assign op_mul = inst_mult | inst_multu;
+    assign op_div = inst_div | inst_divu;
+
+    // MUL part
+    mul u_mul(
+    	.clk        (clk            ),
+        .resetn     (~rst           ),
+        .mul_signed (inst_mult      ),
+        .ina        (rf_rdata1      ),
+        .inb        (rf_rdata2      ),
+        .result     (mul_result     )
+    );
+
+    // DIV part
+    wire div_ready_i;
+    reg stallreq_for_div;
+    assign stallreq_for_ex = stallreq_for_div;
+
+    reg [31:0] div_opdata1_o;
+    reg [31:0] div_opdata2_o;
+    reg div_start_o;
+    reg signed_div_o;
+
+    div u_div(
+    	.rst          (rst          ),
+        .clk          (clk          ),
+        .signed_div_i (signed_div_o ),
+        .opdata1_i    (div_opdata1_o    ),
+        .opdata2_i    (div_opdata2_o    ),
+        .start_i      (div_start_o      ),
+        .annul_i      (1'b0      ),
+        .result_o     (div_result     ),
+        .ready_o      (div_ready_i      )
+    );
+
+    always @ (*) begin
+        if (rst) begin
+            stallreq_for_div = `NoStop;
+            div_opdata1_o = `ZeroWord;
+            div_opdata2_o = `ZeroWord;
+            div_start_o = `DivStop;
+            signed_div_o = 1'b0;
+        end
+        else begin
+            stallreq_for_div = `NoStop;
+            div_opdata1_o = `ZeroWord;
+            div_opdata2_o = `ZeroWord;
+            div_start_o = `DivStop;
+            signed_div_o = 1'b0;
+            case ({inst_div,inst_divu})
+                2'b10:begin
+                    if (div_ready_i == `DivResultNotReady) begin
+                        div_opdata1_o = rf_rdata1;
+                        div_opdata2_o = rf_rdata2;
+                        div_start_o = `DivStart;
+                        signed_div_o = 1'b1;
+                        stallreq_for_div = `Stop;
+                    end
+                    else if (div_ready_i == `DivResultReady) begin
+                        div_opdata1_o = rf_rdata1;
+                        div_opdata2_o = rf_rdata2;
+                        div_start_o = `DivStop;
+                        signed_div_o = 1'b1;
+                        stallreq_for_div = `NoStop;
+                    end
+                    else begin
+                        div_opdata1_o = `ZeroWord;
+                        div_opdata2_o = `ZeroWord;
+                        div_start_o = `DivStop;
+                        signed_div_o = 1'b0;
+                        stallreq_for_div = `NoStop;
+                    end
+                end
+                2'b01:begin
+                    if (div_ready_i == `DivResultNotReady) begin
+                        div_opdata1_o = rf_rdata1;
+                        div_opdata2_o = rf_rdata2;
+                        div_start_o = `DivStart;
+                        signed_div_o = 1'b0;
+                        stallreq_for_div = `Stop;
+                    end
+                    else if (div_ready_i == `DivResultReady) begin
+                        div_opdata1_o = rf_rdata1;
+                        div_opdata2_o = rf_rdata2;
+                        div_start_o = `DivStop;
+                        signed_div_o = 1'b0;
+                        stallreq_for_div = `NoStop;
+                    end
+                    else begin
+                        div_opdata1_o = `ZeroWord;
+                        div_opdata2_o = `ZeroWord;
+                        div_start_o = `DivStop;
+                        signed_div_o = 1'b0;
+                        stallreq_for_div = `NoStop;
+                    end
+                end
+                default:begin
+                end
+            endcase
+        end
+    end
+
+    assign hi_we = inst_mthi | inst_div | inst_divu | inst_mult | inst_multu;
+    assign lo_we = inst_mtlo | inst_div | inst_divu | inst_mult | inst_multu;
+
+    assign hi_o = inst_mthi ? rf_rdata1 : 
+                  op_mul ? mul_result[63:32] :
+                  op_div ? div_result[63:32] : 32'b0;
+    
+    assign lo_o = inst_mtlo ? rf_rdata1 :
+                  op_mul ? mul_result[31:0] :
+                  op_div ? div_result[31:0] : 32'b0;
+
+    assign hilo_bus = {
+        hi_we, hi_o,
+        lo_we, lo_o
+    };
+
 
 
 // output
@@ -201,3 +283,59 @@ module EX(
     
     
 endmodule
+
+
+
+/*  **abandon**  single cycle mul & div */
+// mul & div
+//     wire inst_mfhi, inst_mflo, inst_mthi, inst_mtlo,
+//          inst_mult, inst_multu, inst_div, inst_divu;
+    
+//     wire hi_we, lo_we;
+//     wire [31:0] hi_o, lo_o;
+//     wire [`HILO_WD-1:0] hilo_bus;
+
+//     wire sign_flag;
+//     wire [31:0] div_result, mod_result;
+//     wire [63:0] mult_result, multu_result;
+
+//     wire [31:0] md_src1, md_src2;
+
+//     assign {
+//         inst_mfhi, inst_mflo, inst_mthi, inst_mtlo,
+//         inst_mult, inst_multu, inst_div, inst_divu
+//     } = hilo_op;
+
+//     assign sign_flag = rf_rdata1[31]^rf_rdata2[31];
+//     assign md_src1 = inst_div | inst_mult ? (rf_rdata1[31] ? {1'b0,~rf_rdata1[30:0]}+1'b1 : rf_rdata1)
+//                    : inst_divu | inst_multu ? rf_rdata1
+//                    : 32'b1;
+//     assign md_src2 = inst_div | inst_mult ? (rf_rdata2[31] ? {1'b0,~rf_rdata2[30:0]}+1'b1 : rf_rdata2)
+//                    : inst_divu | inst_multu ? rf_rdata2
+//                    : 32'b1;
+
+//     assign div_result = md_src1 / md_src2;
+//     assign mod_result = md_src1 % md_src2;
+//     assign multu_result = md_src1 * md_src2;
+//     assign mult_result = sign_flag ? {sign_flag,~multu_result[62:0]}+1'b1 : {sign_flag,multu_result[62:0]};
+
+//     assign hi_we = inst_div | inst_divu | inst_mult | inst_multu | inst_mthi;
+//     assign lo_we = inst_div | inst_divu | inst_mult | inst_multu | inst_mtlo;
+
+//     assign hi_o = inst_mthi ? rf_rdata1 :
+//                   inst_div ? (rf_rdata1[31] ? {rf_rdata1[31],~mod_result[30:0]}+1'b1 : {rf_rdata1[31],mod_result[30:0]}) :
+//                   inst_divu ? mod_result :
+//                   inst_mult ? mult_result[63:32] :
+//                   inst_multu ? multu_result[63:32] :
+//                   32'b0;
+//     assign lo_o = inst_mtlo ? rf_rdata1 :
+//                   inst_div ? (sign_flag ? {sign_flag,~div_result[30:0]}+1'b1 : {sign_flag,div_result[30:0]}):
+//                   inst_divu ? div_result :
+//                   inst_mult ? mult_result[31:0] :
+//                   inst_multu ? multu_result[31:0] :
+//                   32'b0;
+
+//     assign hilo_bus = {
+//         hi_we, hi_o,
+//         lo_we, lo_o
+//     };

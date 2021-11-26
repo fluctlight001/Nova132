@@ -32,6 +32,8 @@ module mycpu_core(
     wire [`WB_TO_RF_WD-1:0] wb_to_rf_bus;
     wire [`StallBus-1:0] stall;
     wire stallreq_for_load;
+    wire stallreq_for_bru;
+    wire stallreq_for_ex;
 
     IF u_IF(
     	.clk             (clk             ),
@@ -47,23 +49,25 @@ module mycpu_core(
     
 
     ID u_ID(
-    	.clk             (clk               ),
-        .rst             (rst               ),
-        .stall           (stall             ),
-        .stallreq        (stallreq_for_load ),
-        .if_to_id_bus    (if_to_id_bus      ),
-        .inst_sram_rdata (inst_sram_rdata   ),
-        .ex_to_rf_bus    (ex_to_rf_bus      ),
-        .mem_to_rf_bus   (mem_to_rf_bus     ),
-        .wb_to_rf_bus    (wb_to_rf_bus      ),
-        .id_to_ex_bus    (id_to_ex_bus      ),
-        .br_bus          (br_bus            )
+    	.clk                (clk               ),
+        .rst                (rst               ),
+        .stall              (stall             ),
+        .stallreq_for_load  (stallreq_for_load ),
+        .stallreq_for_bru   (stallreq_for_bru  ),
+        .if_to_id_bus       (if_to_id_bus      ),
+        .inst_sram_rdata    (inst_sram_rdata   ),
+        .ex_to_rf_bus       (ex_to_rf_bus      ),
+        .mem_to_rf_bus      (mem_to_rf_bus     ),
+        .wb_to_rf_bus       (wb_to_rf_bus      ),
+        .id_to_ex_bus       (id_to_ex_bus      ),
+        .br_bus             (br_bus            )
     );
 
     EX u_EX(
     	.clk             (clk             ),
         .rst             (rst             ),
         .stall           (stall           ),
+        .stallreq_for_ex (stallreq_for_ex ),
         .id_to_ex_bus    (id_to_ex_bus    ),
         .ex_to_mem_bus   (ex_to_mem_bus   ),
         .ex_to_rf_bus    (ex_to_rf_bus    ),
@@ -97,6 +101,8 @@ module mycpu_core(
 
     CTRL u_CTRL(
     	.rst               (rst               ),
+        .stallreq_for_ex   (stallreq_for_ex   ),
+        .stallreq_for_bru  (stallreq_for_bru  ),
         .stallreq_for_load (stallreq_for_load ),
         .stall             (stall             )
     );
