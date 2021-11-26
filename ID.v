@@ -102,9 +102,10 @@ module ID(
     wire [3:0] sel_alu_src2;
     wire [11:0] alu_op;
     wire [7:0] hilo_op; 
+    wire [7:0] mem_op;
 
     wire data_ram_en;
-    wire [3:0] data_ram_wen;
+    wire data_ram_wen;
     
     wire rf_we;
     wire [4:0] rf_waddr;
@@ -278,7 +279,8 @@ module ID(
     // rs to reg1
     assign sel_alu_src1[0] = inst_add | inst_addiu | inst_addu | inst_subu | inst_ori | inst_or | inst_sw | inst_lw 
                            | inst_xor | inst_sltu | inst_slt | inst_slti | inst_sltiu | inst_addi | inst_sub 
-                           | inst_and | inst_andi | inst_nor | inst_xori | inst_sllv | inst_srav | inst_srlv;
+                           | inst_and | inst_andi | inst_nor | inst_xori | inst_sllv | inst_srav | inst_srlv
+                           | inst_lb | inst_lbu | inst_lh | inst_lhu | inst_sb | inst_sh;
 
     // pc to reg1
     assign sel_alu_src1[1] = inst_jal | inst_bltzal | inst_bgezal | inst_jalr;
@@ -292,7 +294,8 @@ module ID(
                            | inst_sub | inst_and | inst_nor | inst_sllv | inst_sra | inst_srav | inst_srl | inst_srlv;
     
     // imm_sign_extend to reg2
-    assign sel_alu_src2[1] = inst_lui | inst_addiu | inst_sw | inst_lw | inst_slti | inst_sltiu | inst_addi;
+    assign sel_alu_src2[1] = inst_lui | inst_addiu | inst_sw | inst_lw | inst_slti | inst_sltiu | inst_addi | inst_lb
+                           | inst_lbu | inst_lh | inst_lhu | inst_sb | inst_sh;
 
     // 32'b8 to reg2
     assign sel_alu_src2[2] = inst_jal | inst_bltzal | inst_bgezal | inst_jalr;
@@ -303,7 +306,7 @@ module ID(
 
 
     assign op_add = inst_add | inst_addi | inst_addiu | inst_addu | inst_jal | inst_sw | inst_lw | inst_bltzal | inst_bgezal
-                  | inst_jalr;
+                  | inst_jalr | inst_lb | inst_lbu | inst_lh | inst_lhu | inst_sb | inst_sh;
     assign op_sub = inst_subu | inst_sub;
     assign op_slt = inst_slt | inst_slti;
     assign op_sltu = inst_sltu | inst_sltiu;
@@ -325,16 +328,21 @@ module ID(
         inst_mult, inst_multu, inst_div, inst_divu
     };
 
+    assign mem_op = {
+        inst_lb, inst_lbu, inst_lh, inst_lhu, 
+        inst_lw, inst_sb, inst_sh, inst_sw
+    };
+
     // load and store enable
-    assign data_ram_en = inst_sw | inst_lw;
+    assign data_ram_en = inst_sw | inst_lw | inst_lb | inst_lbu | inst_lh | inst_lhu | inst_sb | inst_sh;
 
     // write enable
-    assign data_ram_wen = ({4{inst_sw}}&4'b1111) | ({4{inst_lw}}&4'b0000);
+    assign data_ram_wen = inst_sw | inst_sb | inst_sh;
 
     // 0 from alu_res ; 1 from ld_res
-    assign sel_rf_res = inst_lw; 
+    assign sel_rf_res = inst_lw | inst_lh | inst_lhu | inst_lb | inst_lbu; 
 
-    assign stallreq = inst_lw;
+    assign stallreq = inst_lw | inst_lh | inst_lhu | inst_lb | inst_lbu;
 
 
 
@@ -342,7 +350,8 @@ module ID(
     assign rf_we = inst_ori | inst_lui | inst_addiu | inst_subu | inst_jal | inst_addu | inst_sll | inst_or 
                  | inst_lw | inst_xor | inst_sltu | inst_slt | inst_slti | inst_sltiu | inst_add | inst_addi
                  | inst_sub | inst_and | inst_andi | inst_nor | inst_xori | inst_sllv | inst_sra | inst_srav
-                 | inst_srl | inst_srlv | inst_bltzal | inst_bgezal | inst_jalr | inst_mflo | inst_mfhi;
+                 | inst_srl | inst_srlv | inst_bltzal | inst_bgezal | inst_jalr | inst_mflo | inst_mfhi
+                 | inst_lh | inst_lhu | inst_lb | inst_lbu;
 
 
 
@@ -352,7 +361,7 @@ module ID(
                          | inst_mflo | inst_mfhi;
     // store in [rt] 
     assign sel_rf_dst[1] = inst_ori | inst_lui | inst_addiu | inst_lw | inst_slti | inst_sltiu | inst_addi | inst_andi
-                         | inst_xori;
+                         | inst_xori | inst_lh | inst_lhu | inst_lb | inst_lbu;
     // store in [31]
     assign sel_rf_dst[2] = inst_jal | inst_bltzal | inst_bgezal | inst_jalr;
 
@@ -362,15 +371,16 @@ module ID(
                     | {5{sel_rf_dst[2]}} & 32'd31;
 
     assign id_to_ex_bus = {
-        hilo_op,        // 230:223
-        hi, lo,         // 222:159
-        id_pc,          // 158:127
-        inst,           // 126:95
-        alu_op,         // 94:83
-        sel_alu_src1,   // 82:80
-        sel_alu_src2,   // 79:76
-        data_ram_en,    // 75
-        data_ram_wen,   // 74:71
+        mem_op,         // 235:228
+        hilo_op,        // 227:220
+        hi, lo,         // 219:156
+        id_pc,          // 155:124
+        inst,           // 123:92
+        alu_op,         // 91:80
+        sel_alu_src1,   // 79:77
+        sel_alu_src2,   // 76:73
+        data_ram_en,    // 72
+        data_ram_wen,   // 71
         rf_we,          // 70
         rf_waddr,       // 69:65
         sel_rf_res,     // 64
